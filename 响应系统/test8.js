@@ -1,16 +1,7 @@
-// effect(function effectFn1() {
-//     effect(function effectFn2 () {/* */})
-//     /* */
-// })
+const data = {foo: 1, bar: 6}
 
 // 存储副作用函数的桶
 const bucket = new WeakMap();
-
-// let data = { ok: true, text: 'hello world' }
-let data = { foo: true, bar: true, zoo: 1 }
-
-
-
 
 const obj = new Proxy(data, {
     get(target, key) {
@@ -26,6 +17,7 @@ const obj = new Proxy(data, {
         trigger(target, key)
     }
 })
+
 
 function track (target, key) {
     // 没有activeEffect,直接return
@@ -59,8 +51,23 @@ function trigger (target, key) {
     // 执行副作用函数
     // effects && effects.forEach(fn => fn());
 
-    const effectsToRun = new Set(effects)
-    effectsToRun.forEach(effectFn => effectFn())
+    const effectsToRun = new Set()
+    effects && effects.forEach(effectFn => {
+        
+        // 如果trigger触发执行的副作用函数与当前正在执行的副作用函数相同,则不触发执行
+        if (effectFn !== activeEffect) {
+            effectsToRun.add(effectFn)
+        }
+    })
+    effectsToRun.forEach(effectFn => {
+        // 如果一个副作用函数存在调度器, 则调用该调度器, 并将副作用函数作为参数传递
+        if (effectFn.optiopns.scheduler) { // 新增
+            effectFn.optiopns.scheduler(effectFn) // 新增
+        } else {
+            // 否则直接执行副作用函数(之前的默认行为)
+            effectFn()
+        }
+    })
 }
 
 
@@ -70,7 +77,7 @@ let activeEffect
 const effectStack = []
 
 
-function effect(fn) {
+function effect(fn, optiopns = {}) {
     const effectFn = () => {
         // 调用cleanup函数完成清除工作
         cleanup(effectFn)
@@ -79,15 +86,23 @@ function effect(fn) {
 
         // 在调用副作用函数之前将当前副作用函数压入栈中
         effectStack.push(effectFn)
-        fn()
+        const res = fn()
         // 在当前副作用函数执行完毕后,将当前副作用函数弹出栈,并把acticeEffect还原为之前的值
         effectStack.pop();
         activeEffect = effectStack[effectStack.length - 1]
+        // 将res作为effectFn的返回值
+        return res
     }
+    // 将options挂载到effectFn上
+    effectFn.optiopns = optiopns
     // activeEffect.deps用来存储所有与该副作用函数相关联的依赖集合
     effectFn.deps = []
+    // 只有非lazy的时候才执行
+    if (!optiopns.lazy) {
+        effectFn()
+    }
     // 执行副作用函数
-    effectFn()
+    return effectFn
 }
 
 function cleanup (effectFn) {
@@ -103,19 +118,60 @@ function cleanup (effectFn) {
 }
 
 
-// let temp1, temp2
+// const effectFn = effect(
+//     () => {
+//         console.log(obj.foo + obj.bar)
+//     },
+//     // options
+//     {
+//         lazy: true
+//     }
+// )
 
+// setTimeout(() => {
+//     obj.bar = 10
+// }, 1000)
 
-// effect(function effectFn1 () {
-//     console.log('effectFn1 执行')
-//     effect(function effectFn2 () {
-//         console.log('effectFn2 执行')
-//         temp2 = obj.bar
-//     })
+// effectFn()
 
-//     temp1 = obj.foo
-// })
+function computed(getter) {
+    // value用来缓存上一次计算的值
+    let value;
+    // dirty标志用来标识是否需要重新计算值,为true则意味着“脏”,需要计算
+    let dirty = true;
+    // 把getter函数作为副作用函数,创建一个lazy的effect
+    const effectFn = effect(getter, {
+        lazy: true,
+        // 添加调度器,在调度器中将dirty重置为true
+        scheduler() {
+            dirty = true;
+            // 当计算属性依赖的响应式数据变化时, 手动调用trigger函数触发依赖
+            trigger(obj, 'value')
+        }
+    })
+
+    const obj = {
+        get value() {
+            if (dirty) {
+                value = effectFn()
+                // 将dirty设置为false, 下一次返回直接使用缓存到value中的值
+                dirty = false
+            }
+            // 当读取value时,手动调用track函数进行追踪
+            track(obj, 'value')
+            return value
+        }
+    }
+
+    return obj
+}
+
+const sumRes = computed(() => obj.foo + obj.bar)
 
 effect(() => {
-    obj.zoo++
+    console.log(sumRes.value, 1)
 })
+
+obj.foo++
+
+console.log(sumRes.value)

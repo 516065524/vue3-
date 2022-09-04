@@ -29,7 +29,7 @@ const obj = new Proxy(data, {
 
 function track (target, key) {
     // 没有activeEffect,直接return
-    if (!activeEffect) return target[key]
+    if (!activeEffect) return 
     // 根据target从“桶”中取得depsMap, 它也是一个Map类型: key --> effects
     let depsMap = bucket.get(target)
     // 如果不存在depsMap,那么新建一个Map并与target关联

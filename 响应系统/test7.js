@@ -21,7 +21,7 @@ const obj = new Proxy(data, {
 
 function track (target, key) {
     // 没有activeEffect,直接return
-    if (!activeEffect) return target[key]
+    if (!activeEffect) return
     // 根据target从“桶”中取得depsMap, 它也是一个Map类型: key --> effects
     let depsMap = bucket.get(target)
     // 如果不存在depsMap,那么新建一个Map并与target关联
@@ -111,6 +111,28 @@ function cleanup (effectFn) {
     effectFn.deps.length = 0
 }
 
+// 定义一个任务队列
+const jobQueue = new Set();
+// 使用Promise.resolve()创建了一个Promise实例,我们用它将一个任务添加到微任务队列
+const p = Promise.resolve();
+
+
+// 一个标志代表是否在刷新队列
+let isFlushing = false
+
+function flushJob() {
+    // 如果队列正在刷新,则什么都不做
+    if (isFlushing) return;
+    // 设置为true
+    isFlushing = true;
+    // 在微任务队列中刷新jobQueue队列
+    p.then(() => {
+        jobQueue.forEach(job => job())
+    }).finally(() => {
+        isFlushing = false
+    })
+}
+
 
 effect(
     () => {
@@ -120,11 +142,14 @@ effect(
     {
         scheduler(fn) {
             // ...
-            setTimeout(fn)
+            // setTimeout(fn)
+            jobQueue.add(fn)
+            flushJob()
         }
     }
 )
 
 obj.foo++
+obj.foo++
 
-console.log('结束了')
+// console.log('结束了')
