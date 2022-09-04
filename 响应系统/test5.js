@@ -1,8 +1,13 @@
+// effect(function effectFn1() {
+//     effect(function effectFn2 () {/* */})
+//     /* */
+// })
+
 // 存储副作用函数的桶
 const bucket = new WeakMap();
 
 // let data = { ok: true, text: 'hello world' }
-let data = { foo: true, bar: true }
+let data = { foo: true, bar: true, zoo: 1 }
 
 
 
@@ -61,6 +66,9 @@ function trigger (target, key) {
 
 let activeEffect
 
+// effect栈
+const effectStack = []
+
 
 function effect(fn) {
     const effectFn = () => {
@@ -68,7 +76,13 @@ function effect(fn) {
         cleanup(effectFn)
         // 当effectFn执行时,将其设置为当前激活的副作用函数
         activeEffect = effectFn
+
+        // 在调用副作用函数之前将当前副作用函数压入栈中
+        effectStack.push(effectFn)
         fn()
+        // 在当前副作用函数执行完毕后,将当前副作用函数弹出栈,并把acticeEffect还原为之前的值
+        effectStack.pop();
+        activeEffect = effectStack[effectStack.length - 1]
     }
     // activeEffect.deps用来存储所有与该副作用函数相关联的依赖集合
     effectFn.deps = []
@@ -89,37 +103,19 @@ function cleanup (effectFn) {
 }
 
 
+// let temp1, temp2
 
 
-// effect(() => {
-//     console.log('111')
-//     console.log(obj.ok ? obj.text : 'not')
+// effect(function effectFn1 () {
+//     console.log('effectFn1 执行')
+//     effect(function effectFn2 () {
+//         console.log('effectFn2 执行')
+//         temp2 = obj.bar
+//     })
+
+//     temp1 = obj.foo
 // })
 
-// setTimeout(() => {
-//     obj.ok = false
-//     setTimeout(() => {
-//         obj.text = 'hello vue3'
-//     }, 1000)
-// },1000)
-
-let temp1, temp2
-
-
-effect(function effectFn1 () {
-    console.log('effectFn1 执行')
-    effect(function effectFn2 () {
-        console.log('effectFn2 执行')
-        temp2 = obj.bar
-    })
-
-    temp1 = obj.foo
+effect(() => {
+    obj.zoo++
 })
-
-// const set = new Set([1])
-
-// set.forEach(item => {
-//     set.delete(1)
-//     set.add(1)
-//     console.log('遍历中')
-// })

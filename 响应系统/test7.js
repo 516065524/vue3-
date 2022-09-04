@@ -1,11 +1,7 @@
+const data = {foo: 1}
+
 // 存储副作用函数的桶
 const bucket = new WeakMap();
-
-// let data = { ok: true, text: 'hello world' }
-let data = { foo: true, bar: true }
-
-
-
 
 const obj = new Proxy(data, {
     get(target, key) {
@@ -21,6 +17,7 @@ const obj = new Proxy(data, {
         trigger(target, key)
     }
 })
+
 
 function track (target, key) {
     // 没有activeEffect,直接return
@@ -54,22 +51,48 @@ function trigger (target, key) {
     // 执行副作用函数
     // effects && effects.forEach(fn => fn());
 
-    const effectsToRun = new Set(effects)
-    effectsToRun.forEach(effectFn => effectFn())
+    const effectsToRun = new Set()
+    effects && effects.forEach(effectFn => {
+        
+        // 如果trigger触发执行的副作用函数与当前正在执行的副作用函数相同,则不触发执行
+        if (effectFn !== activeEffect) {
+            effectsToRun.add(effectFn)
+        }
+    })
+    effectsToRun.forEach(effectFn => {
+        // 如果一个副作用函数存在调度器, 则调用该调度器, 并将副作用函数作为参数传递
+        if (effectFn.optiopns.scheduler) { // 新增
+            effectFn.optiopns.scheduler(effectFn) // 新增
+        } else {
+            // 否则直接执行副作用函数(之前的默认行为)
+            effectFn()
+        }
+    })
 }
 
 
 let activeEffect
 
+// effect栈
+const effectStack = []
 
-function effect(fn) {
+
+function effect(fn, optiopns = {}) {
     const effectFn = () => {
         // 调用cleanup函数完成清除工作
         cleanup(effectFn)
         // 当effectFn执行时,将其设置为当前激活的副作用函数
         activeEffect = effectFn
+
+        // 在调用副作用函数之前将当前副作用函数压入栈中
+        effectStack.push(effectFn)
         fn()
+        // 在当前副作用函数执行完毕后,将当前副作用函数弹出栈,并把acticeEffect还原为之前的值
+        effectStack.pop();
+        activeEffect = effectStack[effectStack.length - 1]
     }
+    // 将options挂载到effectFn上
+    effectFn.optiopns = optiopns
     // activeEffect.deps用来存储所有与该副作用函数相关联的依赖集合
     effectFn.deps = []
     // 执行副作用函数
@@ -89,37 +112,19 @@ function cleanup (effectFn) {
 }
 
 
+effect(
+    () => {
+        console.log(obj.foo)
+    },
+    // options
+    {
+        scheduler(fn) {
+            // ...
+            setTimeout(fn)
+        }
+    }
+)
 
+obj.foo++
 
-// effect(() => {
-//     console.log('111')
-//     console.log(obj.ok ? obj.text : 'not')
-// })
-
-// setTimeout(() => {
-//     obj.ok = false
-//     setTimeout(() => {
-//         obj.text = 'hello vue3'
-//     }, 1000)
-// },1000)
-
-let temp1, temp2
-
-
-effect(function effectFn1 () {
-    console.log('effectFn1 执行')
-    effect(function effectFn2 () {
-        console.log('effectFn2 执行')
-        temp2 = obj.bar
-    })
-
-    temp1 = obj.foo
-})
-
-// const set = new Set([1])
-
-// set.forEach(item => {
-//     set.delete(1)
-//     set.add(1)
-//     console.log('遍历中')
-// })
+console.log('结束了')
